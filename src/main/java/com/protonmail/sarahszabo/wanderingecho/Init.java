@@ -5,6 +5,10 @@
  */
 package com.protonmail.sarahszabo.wanderingecho;
 
+import java.nio.file.FileStore;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+
 /**
  * The Class that holds the main method.
  *
@@ -30,7 +34,6 @@ public class Init {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-
     }
 
 }

@@ -5,6 +5,7 @@
  */
 package com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume;
 
+import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
 import java.nio.file.Path;
 
 /**
@@ -25,7 +26,16 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
     }
 
     @Override
-    void create() {
+    public void create() {
         throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    /**
+     * Takes a snapshot of this subvolume.
+     *
+     * @return The created snapshot
+     */
+    public Snapshot snapshot() {
+        return new Snapshot(getLocation(), BTRFS.configureSnapshotFilesystem(this));
     }
 }

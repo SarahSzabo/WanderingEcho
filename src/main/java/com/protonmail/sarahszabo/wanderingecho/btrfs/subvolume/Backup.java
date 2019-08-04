@@ -23,8 +23,11 @@ public class Backup extends BTRFSPhysicalLocationItem {
         super(location);
     }
 
+    /**
+     * This operation is unsupported on {@link Backup} objects.
+     */
     @Override
-    void create() {
+    public void create() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 }

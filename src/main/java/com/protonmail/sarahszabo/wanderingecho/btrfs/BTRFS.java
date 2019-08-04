@@ -5,6 +5,7 @@
  */
 package com.protonmail.sarahszabo.wanderingecho.btrfs;
 
+import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Backup;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import com.protonmail.sarahszabo.wanderingecho.ui.UI;
@@ -38,7 +39,7 @@ public class BTRFS {
     /**
      * The folder that snapshots are stored in.
      */
-    private static final Path SNAPSHOT_FOLDER = MOUNTING_FOLDER.resolve("Snapshots");
+    private static final Path ROOT_SNAPSHOT_FOLDER = MOUNTING_FOLDER.resolve("Snapshots");
 
     /**
      * The path to the configuration folder for system configuration files
@@ -66,7 +67,7 @@ public class BTRFS {
         //TODO Make JSON/YAML configurations for folders
         try {
             //Create snapshots and mounting folders
-            Files.createDirectories(SNAPSHOT_FOLDER);
+            Files.createDirectories(ROOT_SNAPSHOT_FOLDER);
             //If config doesn't exist, make a new one
             if (Files.notExists(BTRFS_CONFIG_FILE)) {
                 Files.createDirectories(CONFIGURATION_FOLDER);
@@ -91,6 +92,28 @@ public class BTRFS {
             }
         } catch (IOException ex) {
             Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    /**
+     * Configures a subvolume's drive for snapshots and returns the directory of
+     * the snapshots folder.
+     *
+     * @param subvolume The folder on the hard drive to configure
+     * @return
+     */
+    public static Path configureSnapshotFilesystem(Subvolume subvolume) {
+        try {
+            var scanner = new Scanner(System.in);
+            //Command: df --output=target /media/sarah/drive/Snapshots
+            processOP(true, "df", "--output=target", "/media/sarah/drive/Snapshots");
+            //Throw out first line, not helpful information, the path is on the second
+            scanner.nextLine();
+            Path localFilesystemRoot = Paths.get(scanner.nextLine());
+            return Files.createDirectories(localFilesystemRoot.resolve("Snapshots"));
+        } catch (IOException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException(ex);
         }
     }
 
