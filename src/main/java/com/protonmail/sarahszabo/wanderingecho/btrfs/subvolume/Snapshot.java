@@ -39,7 +39,8 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     public void create() {
         try {
             //Command: btrfs subvolume snapshot "thing to snapshot" "place to put snapshot"
-            EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), getLocation().toString());
+            EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), getLocation().resolve(
+                    getName() + "___" + EchoUtil.getBTRFSStorageString()).toString());
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -55,8 +56,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     public Backup backup(Path location) {
         try {
             //Command: btrfs send "SUBVOLUME" | btrfs recieve "LOCATION"
-            EchoUtil.processOP(true, "btrfs", "send", getLocation().toString(), "|", "btrfs", "receive", location
-                    + "___" + EchoUtil.getBTRFSStorageString());
+            EchoUtil.processOP(true, "btrfs", "send", getLocation().toString(), "|", "btrfs", "receive", location.toString());
             return new Backup(location);
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
