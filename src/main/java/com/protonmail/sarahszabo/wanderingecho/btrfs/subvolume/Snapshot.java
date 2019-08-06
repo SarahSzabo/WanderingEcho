@@ -107,6 +107,11 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
         }
     }
 
+    @Override
+    public String toString() {
+        return this.fullFileName;
+    }
+
     /**
      * Getter for the full file name of this snapshot as it will appear on the
      * disk.

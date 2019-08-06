@@ -93,6 +93,9 @@ public class BTRFS {
      */
     public static final String SNAPSHOT_SEPARATOR = "___";
 
+    private static final ExecutorService executor = Executors
+            .newCachedThreadPool(new BasicThreadFactory.Builder().daemon(true).namingPattern("Wandering Echo BTRFS Task Thread %d").build());
+
     /**
      * Class wide logger.
      */
@@ -111,7 +114,6 @@ public class BTRFS {
             if (Files.notExists(BTRFS_CONFIG_FILE)) {
                 Files.createDirectories(CONFIGURATION_FOLDER);
                 Files.createFile(BTRFS_CONFIG_FILE);
-                //TODO: Make subvol list not = null
                 //Ask User Which Subvolumes they Want to Save
                 boolean moreSubvolumes = true;
                 //Initialize subvolume list
@@ -160,14 +162,12 @@ public class BTRFS {
             var pathStream = Files.list(ROOT_SNAPSHOT_FOLDER);
             //Get all dates after the triple underscore & filter by name (if we're looking at @, only get @ subvolumes),
             //also ifnore selected subvolume's snapshot
-            var snapshotList = pathStream.parallel().map(Snapshot::new).filter(snap -> !snap.getName()
+            var snapshotList = pathStream.parallel().map(Snapshot::new).filter(snap -> snap.getName()
                     .equalsIgnoreCase(snapshot.getName()) && !snap.equals(snapshot)).collect(Collectors.toList());
             //Sort by earliest creation date, we want the latest
             snapshotList.sort((snap0, snap1) -> snap0.getCreationDate().compareTo(snap1.getCreationDate()));
             //Get the latest creation date
-            System.out.println(snapshotList.get(snapshotList.size() - 1));
-            System.exit(0);
-            return snapshotList.get(0);
+            return snapshotList.isEmpty() ? null : snapshotList.get(snapshotList.size() - 1);
         } catch (IOException ex) {
             Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -191,29 +191,28 @@ public class BTRFS {
             snapshots.add(snapshot);
             snapshot.create();
         });
-        snapshots.stream().parallel().forEach(snapshot -> {
+        snapshots.stream().forEach(snapshot -> {
             Snapshot parent = null;
             //Synchronize on snapshots to ensure that we don't flood scanner/terminal, but only for asking block,
             //backup block is in full parallel
-            synchronized (snapshot) {
-                //Ask User if there is a parent or not
-                var scanner = getSystemInputScanner();
-                LOG.info("Is there a parent for the snapshot of " + snapshot.getFullFileName() + " ? (Yes / Y)");
-                var response = scanner.nextLine();
+            //Ask User if there is a parent or not
+            var scanner = getSystemInputScanner();
+            LOG.info("Is there a parent for the snapshot of " + snapshot.getFullFileName() + " ? (Yes / Y)");
+            var response = scanner.nextLine();
+            if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
+                //Guess Parent
+                var guess = detectPreviousBackupOf(snapshot);
+                LOG.info("Is this parent correct?" + guess.getFullFileName());
+                response = scanner.nextLine();
                 if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
-                    //Guess Parent
-                    var guess = detectPreviousBackupOf(snapshot);
-                    LOG.info("Is this parent correct?" + guess.getFullFileName());
-                    response = scanner.nextLine();
-                    if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
-                        parent = guess;
-                    } else {
-                        parent = new Snapshot(UI.getDirectory("Choose an Already Existing Snapshot",
-                                ROOT_SNAPSHOT_FOLDER).orElse(null));
-                    }
+                    parent = guess;
+                } else {
+                    parent = new Snapshot(UI.getDirectory("Choose an Already Existing Snapshot",
+                            ROOT_SNAPSHOT_FOLDER).orElse(null));
                 }
             }
-            snapshot.backup(parent, BACKUP_FOLDER);
+            final var localParent = parent;
+            executor.submit(() -> snapshot.backup(localParent, BACKUP_FOLDER));
         });
     }
 
@@ -321,6 +320,8 @@ public class BTRFS {
      * Wrapper class for Jackson serialization.
      */
     private static class SubvolumeList extends ArrayList<Subvolume> {
+
+        private static final long serialVersionUID = 1L;
     }
 
     /**
