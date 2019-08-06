@@ -14,10 +14,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javafx.application.Platform;
+import javafx.embed.swing.JFXPanel;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.layout.Region;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.Stage;
 
 /**
  * A class that represents the UI for this program.
@@ -28,6 +31,13 @@ public final class UI {
 
     private static final BlockingQueue<Path> pathQueue = new ArrayBlockingQueue<>(1);
     private static final BlockingQueue<Optional<String>> textQueue = new ArrayBlockingQueue<>(1);
+
+    static {
+        //Initialize JavaFX Toolkit
+        //Initialize Toolkit
+        new JFXPanel();
+        Platform.setImplicitExit(false);
+    }
 
     private UI() {
     }
@@ -44,9 +54,11 @@ public final class UI {
             BlockingQueue<Optional<ButtonType>> queue = new ArrayBlockingQueue<>(1);
             Platform.runLater(() -> {
                 try {
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.YES, ButtonType.NO);
                     alert.setTitle(title);
-                    alert.setContentText(message);
+                    var stage = (Stage) alert.getDialogPane().getScene().getWindow();
+                    stage.setResizable(true);
+                    alert.getDialogPane().setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
                     queue.put(alert.showAndWait());
                 } catch (InterruptedException ex) {
                     Logger.getLogger(UI.class.getName()).log(Level.SEVERE, null, ex);

@@ -6,9 +6,15 @@
 package com.protonmail.sarahszabo.wanderingecho.util;
 
 import java.io.IOException;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -135,6 +141,21 @@ public class EchoUtil {
     }
 
     /**
+     * Launches a new process in the temp directory, and does not wait for its
+     * completion.
+     *
+     * @param inheritIO Should the streams be merged
+     * @param commands The commands to execute
+     * @throws IOException InterruptedException If something went wrong
+     * @return The generated process
+     */
+    public static Process processOPNoWait(boolean inheritIO, String... commands) throws IOException {
+        var builder = processOPBuilder(inheritIO, commands);
+        System.out.println("COMMAND:" + Arrays.asList(commands).stream().collect(Collectors.joining(",")));
+        return builder.start();
+    }
+
+    /**
      * Gets the process builder with the specified boolean indicating whether IO
      * should be inherited or not, and the commands to execute. This process
      * builder is localised at the temp directory.
@@ -186,6 +207,46 @@ public class EchoUtil {
         return inheritIO ? new ProcessBuilder(commands)
                 .directory(TEMP_DIRECTORY.toFile()).inheritIO()
                 : new ProcessBuilder(commands).directory(TEMP_DIRECTORY.toFile());
+    }
+
+    /**
+     * Helper method, prints the message then System.exit().
+     *
+     * @param message The message to print
+     */
+    public static <T> void messageThenExit(T message) {
+        logger.info(message.toString());
+        System.exit(0);
+    }
+
+    /**
+     * Helper method, prints the message then System.exit().
+     *
+     * @param message The message to print
+     */
+    public static void messageThenExit(String message) {
+        logger.info(message);
+        System.exit(0);
+    }
+
+    /**
+     * Gets the scanner from the process's input stream.
+     *
+     * @param process The process we're getting input from
+     * @return The scanner
+     */
+    public static Scanner getProcessInputScanner(Process process) {
+        return new Scanner(process.getInputStream());
+    }
+
+    /**
+     * Gets the current timestamp that is compatible with being stored on the
+     * disk
+     *
+     * @return The timestamp
+     */
+    public static String getBTRFSStorageString() {
+        return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
     }
 
     private EchoUtil() {

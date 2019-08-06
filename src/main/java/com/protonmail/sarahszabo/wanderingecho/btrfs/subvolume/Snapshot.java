@@ -25,7 +25,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
      * may not exist.
      *
      * @param of The subvolume to take a snapshot of
-     * @param location The location of the snapshot
+     * @param location The location to place the snapshot
      */
     public Snapshot(Path of, Path location) {
         super(location);
@@ -55,7 +55,8 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     public Backup backup(Path location) {
         try {
             //Command: btrfs send "SUBVOLUME" | btrfs recieve "LOCATION"
-            EchoUtil.processOP(true, "btrfs", "send", getLocation().toString(), "|", "btrfs", "recieve", location.toString());
+            EchoUtil.processOP(true, "btrfs", "send", getLocation().toString(), "|", "btrfs", "receive", location
+                    + "___" + EchoUtil.getBTRFSStorageString());
             return new Backup(location);
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);

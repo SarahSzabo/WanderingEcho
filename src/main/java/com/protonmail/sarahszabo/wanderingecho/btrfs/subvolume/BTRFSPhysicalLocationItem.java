@@ -5,6 +5,11 @@
  */
 package com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.nio.file.Path;
 
 /**
@@ -13,9 +18,15 @@ import java.nio.file.Path;
  *
  * @author Sarah Szabo <SarahSzabo@Protonmail.com>
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "BTRFSPhysicalLocationItem")
+@JsonSubTypes({
+    @Type(name = "Snapshot", value = Snapshot.class),
+    @Type(name = "Backup", value = Backup.class),
+    @Type(name = "Subvolume", value = Subvolume.class)})
 public abstract class BTRFSPhysicalLocationItem {
 
     private final String name;
+    @JsonProperty
     private final Path location;
 
     /**
@@ -24,7 +35,8 @@ public abstract class BTRFSPhysicalLocationItem {
      *
      * @param location The location of the subvolume
      */
-    protected BTRFSPhysicalLocationItem(Path location) {
+    @JsonCreator
+    protected BTRFSPhysicalLocationItem(@JsonProperty(value = "location") Path location) {
         this.location = location;
         this.name = location.getFileName().toString();
     }

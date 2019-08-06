@@ -5,6 +5,8 @@
  */
 package com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
 import java.nio.file.Path;
 
@@ -21,7 +23,8 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
      *
      * @param location
      */
-    public Subvolume(Path location) {
+    @JsonCreator
+    public Subvolume(@JsonProperty(value = "location") Path location) {
         super(location);
     }
 
@@ -37,5 +40,10 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
      */
     public Snapshot snapshot() {
         return new Snapshot(getLocation(), BTRFS.configureSnapshotFilesystem(this));
+    }
+
+    @Override
+    public String toString() {
+        return "Subvolume Location: " + getLocation();
     }
 }

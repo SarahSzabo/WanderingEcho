@@ -5,9 +5,16 @@
  */
 package com.protonmail.sarahszabo.wanderingecho;
 
+import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
+import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
+import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import java.nio.file.FileStore;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Scanner;
+import java.util.logging.Logger;
+import javafx.application.Platform;
 
 /**
  * The Class that holds the main method.
@@ -34,6 +41,11 @@ public class Init {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+        BTRFS.commenceBackupOperation();
+        //Shutdown JFX Platform & Exit Gracefully
+        Platform.exit();
+        System.exit(0);
     }
+    private static final Logger LOG = Logger.getLogger(Init.class.getName());
 
 }
