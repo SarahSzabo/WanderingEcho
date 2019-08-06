@@ -79,7 +79,7 @@ public class EchoUtil {
      * @return Whether or not the operation timed out or not
      */
     public static boolean processOP(String... commands) throws IOException {
-        return processOP(false, commands);
+        return processOP(true, commands);
     }
 
     /**
@@ -247,6 +247,15 @@ public class EchoUtil {
      */
     public static String getBTRFSStorageString() {
         return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    /**
+     * Gets the scanner associated with the system input.
+     *
+     * @return The scanner
+     */
+    public static Scanner getSystemInputScanner() {
+        return new Scanner(System.in);
     }
 
     private EchoUtil() {

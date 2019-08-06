@@ -106,11 +106,14 @@ public final class UI {
      * @param title The title of this chooser
      * @return The directory
      */
-    public static Optional<Path> getDirectory(String title) {
+    public static Optional<Path> getDirectory(String title, Path initialDirectory) {
         try {
             Platform.runLater(() -> {
                 try {
                     var chooser = new DirectoryChooser();
+                    if (initialDirectory != null) {
+                        chooser.setInitialDirectory(initialDirectory.toFile());
+                    }
                     chooser.setTitle(Init.PROGRAM_NAME + " " + title);
                     pathQueue.put(chooser.showDialog(null).toPath());
                 } catch (InterruptedException ex) {
@@ -123,5 +126,16 @@ public final class UI {
             Logger.getLogger(UI.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
         }
+    }
+
+    /**
+     * Gets a directory based on the string submitted as the title for the
+     * chooser.
+     *
+     * @param title The title of this chooser
+     * @return The directory
+     */
+    public static Optional<Path> getDirectory(String title) {
+        return getDirectory(title, null);
     }
 }

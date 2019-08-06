@@ -24,12 +24,16 @@ import java.util.logging.Logger;
 import static com.protonmail.sarahszabo.wanderingecho.util.EchoUtil.*;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Scanner;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javafx.scene.control.ButtonType;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -85,12 +89,17 @@ public class BTRFS {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
+     * The separator to be used in filenames to seperate the subvolume and date.
+     */
+    public static final String SNAPSHOT_SEPARATOR = "___";
+
+    /**
      * Class wide logger.
      */
     private static final Logger LOG = Logger.getLogger(BTRFS.class.getName());
 
     static {
-        try (var scanner = getProcessInputScanner(processOPNoWait(false, "whoami"))) {
+        try ( var scanner = getProcessInputScanner(processOPNoWait(false, "whoami"))) {
             while (scanner.hasNext()) {
                 if (!scanner.next().equalsIgnoreCase("root")) {
                     messageThenExit("We aren't root!, Run using sudo for root level");
@@ -141,30 +150,71 @@ public class BTRFS {
     }
 
     /**
+     * Gets the previous snapshot of a certain subvolume.
+     *
+     * @param snapshot The snapshot to find the earlier version of
+     * @return The earlier version
+     */
+    private static Snapshot detectPreviousBackupOf(Snapshot snapshot) {
+        try {
+            var pathStream = Files.list(ROOT_SNAPSHOT_FOLDER);
+            //Get all dates after the triple underscore & filter by name (if we're looking at @, only get @ subvolumes),
+            //also ifnore selected subvolume's snapshot
+            var snapshotList = pathStream.parallel().map(Snapshot::new).filter(snap -> !snap.getName()
+                    .equalsIgnoreCase(snapshot.getName()) && !snap.equals(snapshot)).collect(Collectors.toList());
+            //Sort by earliest creation date, we want the latest
+            snapshotList.sort((snap0, snap1) -> snap0.getCreationDate().compareTo(snap1.getCreationDate()));
+            //Get the latest creation date
+            System.out.println(snapshotList.get(snapshotList.size() - 1));
+            System.exit(0);
+            return snapshotList.get(0);
+        } catch (IOException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
      * Turns all available snapshots (Including the @ and @home subvolumes into
      * backups to a location of the user's choosing.
      */
     public static void commenceBackupOperation() {
-        //Ask if User wants to take a snapshot/backup of the system
-//TODO: implement this
-//System.out.println("Would you like to create a new snapshot/backup?");
-        //var scanner = new Scanner(System.in);
-        //var response = scanner.nextLine();
-        if (true/*response.equalsIgnoreCase("Yes")*/) {
-            //Do backup
-            var list = BTRFS.getSubvolumeList();
-            BTRFS.mountRootFilesystem();
-            //Add BTRFS System & User Subvolumes
-            list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
-            list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
-            //Do Snapshots
-            var snapshots = new ArrayList<Snapshot>(list.size());
-            list.stream().parallel().map(subvolume -> subvolume.snapshot()).forEach(snapshot -> {
-                snapshots.add(snapshot);
-                snapshot.create();
-            });
-            snapshots.stream().parallel().forEach(snapshot -> snapshot.backup(BACKUP_FOLDER));
-        }
+        //Do backup
+        var list = BTRFS.getSubvolumeList();
+        BTRFS.mountRootFilesystem();
+        //Add BTRFS System & User Subvolumes
+        list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
+        list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
+        //Do Snapshots
+        var snapshots = new ArrayList<Snapshot>(list.size());
+        list.stream().parallel().map(subvolume -> subvolume.snapshot()).forEach(snapshot -> {
+            snapshots.add(snapshot);
+            snapshot.create();
+        });
+        snapshots.stream().parallel().forEach(snapshot -> {
+            Snapshot parent = null;
+            //Synchronize on snapshots to ensure that we don't flood scanner/terminal, but only for asking block,
+            //backup block is in full parallel
+            synchronized (snapshot) {
+                //Ask User if there is a parent or not
+                var scanner = getSystemInputScanner();
+                LOG.info("Is there a parent for the snapshot of " + snapshot.getFullFileName() + " ? (Yes / Y)");
+                var response = scanner.nextLine();
+                if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
+                    //Guess Parent
+                    var guess = detectPreviousBackupOf(snapshot);
+                    LOG.info("Is this parent correct?" + guess.getFullFileName());
+                    response = scanner.nextLine();
+                    if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
+                        parent = guess;
+                    } else {
+                        parent = new Snapshot(UI.getDirectory("Choose an Already Existing Snapshot",
+                                ROOT_SNAPSHOT_FOLDER).orElse(null));
+                    }
+                }
+            }
+            snapshot.backup(parent, BACKUP_FOLDER);
+        });
     }
 
     /**
@@ -177,7 +227,7 @@ public class BTRFS {
     public static Path configureSnapshotFilesystem(Subvolume subvolume) {
         //We want to get the parent because this command has a strange output ON the subvolume itself
         //Command: df --output=target /media/sarah/drive/Snapshots
-        try (var scanner = getProcessInputScanner(processOPNoWait(false, "df", "--output=target",
+        try ( var scanner = getProcessInputScanner(processOPNoWait(false, "df", "--output=target",
                 subvolume.getLocation().getParent().toString()))) {
             //Throw out first line, not helpful information, the path is on the second
             scanner.nextLine();
