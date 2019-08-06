@@ -19,6 +19,7 @@ import java.util.logging.Logger;
 public class Snapshot extends BTRFSPhysicalLocationItem {
 
     private final Path of;
+    private final String fileName;
 
     /**
      * Creates a new snapshot with the specified location.The snapshot may or
@@ -30,6 +31,8 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     public Snapshot(Path of, Path location) {
         super(location, of.getFileName().toString());
         this.of = of;
+        //The filename on the disk: /media/disk/SUBVOL___TIME
+        this.fileName = location.resolve(of.getFileName() + "___" + EchoUtil.getBTRFSStorageString()).toString();
     }
 
     /**
@@ -41,8 +44,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
             System.out.println(getLocation().resolve(
                     getName() + "___" + EchoUtil.getBTRFSStorageString()).toString());
             //Command: btrfs subvolume snapshot "thing to snapshot" "place to put snapshot"
-            EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), getLocation().resolve(
-                    getName() + "___" + EchoUtil.getBTRFSStorageString()).toString());
+            EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), this.fileName);
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -58,7 +60,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     public Backup backup(Path location) {
         try {
             //Command: btrfs send "SUBVOLUME" | btrfs recieve "LOCATION"
-            EchoUtil.processOP(true, "btrfs", "send", getLocation().toString(), "|", "btrfs", "receive", location.toString());
+            EchoUtil.processOP(true, "btrfs", "send", this.fileName, "|", "btrfs", "receive", location.toString());
             return new Backup(location);
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);

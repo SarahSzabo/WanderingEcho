@@ -163,7 +163,7 @@ public class BTRFS {
                 snapshots.add(snapshot);
                 snapshot.create();
             });
-            snapshots.stream().parallel().forEach(snapshot -> snapshot.backup(null));
+            snapshots.stream().parallel().forEach(snapshot -> snapshot.backup(BACKUP_FOLDER));
         }
     }
 
