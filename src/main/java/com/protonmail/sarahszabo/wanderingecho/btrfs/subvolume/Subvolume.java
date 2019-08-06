@@ -25,7 +25,7 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
      */
     @JsonCreator
     public Subvolume(@JsonProperty(value = "location") Path location) {
-        super(location);
+        super(location, location.getFileName().toString());
     }
 
     @Override

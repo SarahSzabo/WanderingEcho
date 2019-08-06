@@ -25,6 +25,7 @@ import java.nio.file.Path;
     @Type(name = "Subvolume", value = Subvolume.class)})
 public abstract class BTRFSPhysicalLocationItem {
 
+    @JsonProperty
     private final String name;
     @JsonProperty
     private final Path location;
@@ -35,10 +36,15 @@ public abstract class BTRFSPhysicalLocationItem {
      *
      * @param location The location of the subvolume
      */
+    protected BTRFSPhysicalLocationItem(Path location) {
+        this(location, location.getParent().toString());
+    }
+
     @JsonCreator
-    protected BTRFSPhysicalLocationItem(@JsonProperty(value = "location") Path location) {
+    protected BTRFSPhysicalLocationItem(@JsonProperty(value = "location") Path location,
+            @JsonProperty(value = "name") String name) {
         this.location = location;
-        this.name = location.getFileName().toString();
+        this.name = name;
     }
 
     /**
