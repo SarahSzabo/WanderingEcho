@@ -8,7 +8,10 @@ package com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A class representing a subvolume.
@@ -39,7 +42,12 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
      * @return The created snapshot
      */
     public Snapshot snapshot() {
-        return new Snapshot(getLocation(), BTRFS.configureSnapshotFilesystem(this));
+        try {
+            return new Snapshot(getLocation(), BTRFS.configureSnapshotFilesystem(this));
+        } catch (IOException ex) {
+            Logger.getLogger(Subvolume.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException(ex);
+        }
     }
 
     @Override

@@ -151,6 +151,10 @@ public class BTRFS {
         }
     }
 
+    public static void purgeSnapshots(boolean alsoBackups) throws IOException {
+        processOP("btrfs", "subvolume", "delete", ROOT_SNAPSHOT_FOLDER + "/*" + (alsoBackups ? BACKUP_FOLDER + "/*" : ""));
+    }
+
     /**
      * Gets the previous snapshot of a certain subvolume.
      *
@@ -177,8 +181,10 @@ public class BTRFS {
     /**
      * Turns all available snapshots (Including the @ and @home subvolumes into
      * backups to a location of the user's choosing.
+     *
+     * @throws java.io.IOException If something happened
      */
-    public static void commenceBackupOperation() {
+    public static void commenceBackupOperation() throws IOException {
         //Do backup
         var list = BTRFS.getSubvolumeList();
         BTRFS.mountRootFilesystem();
@@ -223,7 +229,7 @@ public class BTRFS {
      * @param subvolume The folder on the hard drive to configure
      * @return The location of the Snapshots folder
      */
-    public static Path configureSnapshotFilesystem(Subvolume subvolume) {
+    public static Path configureSnapshotFilesystem(Subvolume subvolume) throws IOException {
         //We want to get the parent because this command has a strange output ON the subvolume itself
         //Command: df --output=target /media/sarah/drive/Snapshots
         try ( var scanner = getProcessInputScanner(processOPNoWait(false, "df", "--output=target",
@@ -232,36 +238,28 @@ public class BTRFS {
             scanner.nextLine();
             Path localFilesystemRoot = Paths.get(scanner.nextLine());
             return Files.createDirectories(localFilesystemRoot.resolve("Snapshots"));
-        } catch (IOException ex) {
-            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
-            throw new IllegalStateException(ex);
         }
     }
 
     /**
      * Mounts the root filesystem or does nothing if already mounted
      */
-    public static void mountRootFilesystem() {
+    public static void mountRootFilesystem() throws IOException {
         if (!ROOT_FILESYSTEM_MOUNTED.get()) {
-            try {
-                //Command: findmnt / -o UUID
-                var process = processOPNoWait(false, "findmnt", "/", "-o", "UUID");
-                var scanner = new Scanner(process.getInputStream());
-                //What we want is on second line
-                scanner.nextLine();
-                String rootUUID = scanner.nextLine();
-                LOG.info("Mounting Scanner Root ID = " + rootUUID);
-                //Mount by UUID
-                process = processOPNoWait(false, "mount", "-U", rootUUID, MOUNTING_FOLDER.toString());
-                scanner = new Scanner(process.getErrorStream());
-                while (scanner.hasNextLine()) {
-                    LOG.info(scanner.nextLine());
-                }
-                System.out.println("Filesystem Mounted!");
-            } catch (IOException ex) {
-                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
-                throw new IllegalStateException(ex);
+            //Command: findmnt / -o UUID
+            var process = processOPNoWait(false, "findmnt", "/", "-o", "UUID");
+            var scanner = new Scanner(process.getInputStream());
+            //What we want is on second line
+            scanner.nextLine();
+            String rootUUID = scanner.nextLine();
+            LOG.info("Mounting Scanner Root ID = " + rootUUID);
+            //Mount by UUID
+            process = processOPNoWait(false, "mount", "-U", rootUUID, MOUNTING_FOLDER.toString());
+            scanner = new Scanner(process.getErrorStream());
+            while (scanner.hasNextLine()) {
+                LOG.info(scanner.nextLine());
             }
+            LOG.info("Filesystem Mounted!");
         }
     }
 

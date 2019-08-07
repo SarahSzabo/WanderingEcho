@@ -16,7 +16,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Formatter;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -259,5 +261,22 @@ public class EchoUtil {
     }
 
     private EchoUtil() {
+    }
+
+    /**
+     * A helper class that formats loggers in the program.
+     */
+    public static class LoggerFormatter extends Formatter {
+
+        @Override
+        public String format(LogRecord record) {
+            if (record.getLevel() == Level.INFO) {
+                return "\n" + record.getMessage() + "\n";
+            } else {
+                return record.getInstant() + ": " + record.getSourceClassName() + " / " + record.getSourceMethodName()
+                        + "\n" + record.getMessage();
+            }
+        }
+
     }
 }
