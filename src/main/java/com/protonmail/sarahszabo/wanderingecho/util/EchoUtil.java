@@ -242,16 +242,6 @@ public class EchoUtil {
     }
 
     /**
-     * Gets the current timestamp that is compatible with being stored on the
-     * disk
-     *
-     * @return The timestamp
-     */
-    public static String getBTRFSStorageString() {
-        return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-    }
-
-    /**
      * Gets the scanner associated with the system input.
      *
      * @return The scanner
@@ -271,7 +261,7 @@ public class EchoUtil {
         @Override
         public String format(LogRecord record) {
             if (record.getLevel() == Level.INFO) {
-                return "\n" + record.getMessage() + "\n";
+                return record.getMessage() + "\n\n";
             } else {
                 return record.getInstant() + ": " + record.getSourceClassName() + " / " + record.getSourceMethodName()
                         + "\n" + record.getMessage();

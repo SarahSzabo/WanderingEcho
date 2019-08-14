@@ -12,7 +12,7 @@ import java.nio.file.Path;
  *
  * @author Sarah Szabo <SarahSzabo@Protonmail.com>
  */
-public class Backup extends BTRFSPhysicalLocationItem {
+public class Backup extends BTRFSPhysicalLocationItem<Backup> {
 
     /**
      * Creates a new backup that may or may not exist.
@@ -27,7 +27,7 @@ public class Backup extends BTRFSPhysicalLocationItem {
      * This operation is unsupported on {@link Backup} objects.
      */
     @Override
-    public void create() {
+    public Backup create() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 }

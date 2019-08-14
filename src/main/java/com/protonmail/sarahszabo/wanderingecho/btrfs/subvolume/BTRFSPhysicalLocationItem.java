@@ -23,7 +23,7 @@ import java.nio.file.Path;
     @Type(name = "Snapshot", value = Snapshot.class),
     @Type(name = "Backup", value = Backup.class),
     @Type(name = "Subvolume", value = Subvolume.class)})
-public abstract class BTRFSPhysicalLocationItem {
+public abstract class BTRFSPhysicalLocationItem<T> {
 
     @JsonProperty
     private final String name;
@@ -48,16 +48,16 @@ public abstract class BTRFSPhysicalLocationItem {
     }
 
     /**
-     * Gets the filename of the location
+     * Gets the filename of the location on the hard disk.
      *
-     * @return The filename of the location
+     * @return The filename of the location on the disk
      */
     public String getName() {
         return this.name;
     }
 
     /**
-     * Gets the path of the location.
+     * Gets the path of the location on the disk.
      *
      * @return the path of the location
      */
@@ -68,5 +68,5 @@ public abstract class BTRFSPhysicalLocationItem {
     /**
      * Creates a physical copy of this item on the disk.
      */
-    abstract void create();
+    abstract T create();
 }

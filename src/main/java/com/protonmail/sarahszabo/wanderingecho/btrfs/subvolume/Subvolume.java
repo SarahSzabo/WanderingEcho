@@ -18,7 +18,7 @@ import java.util.logging.Logger;
  *
  * @author Sarah Szabo <SarahSzabo@Protonmail.com>
  */
-public class Subvolume extends BTRFSPhysicalLocationItem {
+public class Subvolume extends BTRFSPhysicalLocationItem<Subvolume> {
 
     /**
      * Creates a new subvolume with the specified path.The subvolume may or may
@@ -32,7 +32,7 @@ public class Subvolume extends BTRFSPhysicalLocationItem {
     }
 
     @Override
-    public void create() {
+    public Subvolume create() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 

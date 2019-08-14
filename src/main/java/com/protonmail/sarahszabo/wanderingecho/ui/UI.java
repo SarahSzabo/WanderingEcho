@@ -104,6 +104,7 @@ public final class UI {
      * chooser.
      *
      * @param title The title of this chooser
+     * @param initialDirectory The initial directory
      * @return The directory
      */
     public static Optional<Path> getDirectory(String title, Path initialDirectory) {

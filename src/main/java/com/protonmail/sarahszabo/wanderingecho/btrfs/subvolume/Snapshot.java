@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -20,7 +22,21 @@ import java.util.logging.Logger;
  *
  * @author Sarah Szabo <SarahSzabo@Protonmail.com>
  */
-public class Snapshot extends BTRFSPhysicalLocationItem {
+public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
+
+    /**
+     * The date time formatter for snapshot dates.
+     */
+    public static final DateTimeFormatter SNAPSHOT_FORMAT = DateTimeFormatter.ofPattern("dd-mm-yyyy_HH-mm-ss_z");
+
+    /**
+     * Gets the current date using the Snapshot formatter as a string.
+     *
+     * @return The date in string format
+     */
+    private static String getCurrentDateString() {
+        return LocalDateTime.now().format(SNAPSHOT_FORMAT);
+    }
 
     private final Path of;
     private final String fullFileName;
@@ -35,7 +51,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
         super(existing, existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[0]);
         this.of = null;
         this.fullFileName = existing.toString();
-        this.creationDate = LocalDateTime.parse(existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[1]);
+        this.creationDate = LocalDateTime.parse(existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[1], SNAPSHOT_FORMAT);
     }
 
     /**
@@ -46,23 +62,26 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
      * @param location The location to place the snapshot
      */
     public Snapshot(Path of, Path location) {
-        super(location, of.getFileName().toString());
+        super(location.resolve(of.getFileName() + BTRFS.SNAPSHOT_SEPARATOR + getCurrentDateString()), of.getFileName().toString());
         this.of = of;
         //The filename on the disk: /media/disk/SUBVOL___TIME
-        this.fullFileName = location.resolve(of.getFileName() + BTRFS.SNAPSHOT_SEPARATOR + EchoUtil.getBTRFSStorageString()).toString();
-        this.creationDate = LocalDateTime.now();
+        this.fullFileName = super.getLocation().toString();
+        this.creationDate = LocalDateTime.MAX;
     }
 
     /**
      * Creates a snapshot at the location given to the constructor.
+     *
+     * @return The created snapshot
      */
     @Override
-    public void create() {
+    public Snapshot create() {
         try {
             System.out.println(getLocation().resolve(
-                    getName() + "___" + EchoUtil.getBTRFSStorageString()).toString());
+                    getName() + "___" + getCurrentDateString()));
             //Command: btrfs subvolume snapshot "thing to snapshot" "place to put snapshot"
             EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), this.fullFileName);
+            return new Snapshot(super.getLocation());
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -79,7 +98,8 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
      */
     private Path generateBashBackupScript(Snapshot parent, Path location) throws IOException {
         //Command: btrfs send "SUBVOLUME" | btrfs recieve "LOCATION"
-        var text = "btrfs send " + (parent == null ? "" : "-p " + parent + " ") + this.fullFileName + " | btrfs receive " + location;
+        var text = "btrfs send " + (parent == null ? "" : "-p \"" + parent.getFullFileName() + "\" ")
+                + "\"" + this.fullFileName + "\" | btrfs receive \"" + location + "\"";
         var scriptLocation = Files.createTempFile("Wandering Echo Temporary Backup Script for " + getName(), ".sh");
         Files.write(scriptLocation, text.getBytes());
         return scriptLocation;
@@ -123,7 +143,9 @@ public class Snapshot extends BTRFSPhysicalLocationItem {
     }
 
     /**
-     * Gets the creation date of this snapshot.
+     * Gets the creation date of this snapshot. NOTE: the creation date may be
+     * {@link ZonedDateTime}'s max value if we haven't called the create method.
+     * This means that the snapshot doesn't exist yet.
      *
      * @return The creation date
      */

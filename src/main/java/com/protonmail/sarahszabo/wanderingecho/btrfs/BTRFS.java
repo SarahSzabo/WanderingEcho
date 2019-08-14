@@ -7,33 +7,24 @@ package com.protonmail.sarahszabo.wanderingecho.btrfs;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Backup;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import com.protonmail.sarahszabo.wanderingecho.ui.UI;
+import static com.protonmail.sarahszabo.wanderingecho.util.EchoUtil.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import static com.protonmail.sarahszabo.wanderingecho.util.EchoUtil.*;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Map;
+import java.util.List;
 import java.util.Scanner;
-import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import javafx.scene.control.ButtonType;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -102,6 +93,8 @@ public class BTRFS {
     private static final Logger LOG = Logger.getLogger(BTRFS.class.getName());
 
     static {
+        MAPPER.findAndRegisterModules();
+        MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
         try ( var scanner = getProcessInputScanner(processOPNoWait(false, "whoami"))) {
             while (scanner.hasNext()) {
                 if (!scanner.next().equalsIgnoreCase("root")) {
@@ -151,6 +144,12 @@ public class BTRFS {
         }
     }
 
+    /**
+     * Purges the entire snapshot cache.
+     *
+     * @param alsoBackups If true, also purges the backup cache
+     * @throws IOException If something happened
+     */
     public static void purgeSnapshots(boolean alsoBackups) throws IOException {
         processOP("btrfs", "subvolume", "delete", ROOT_SNAPSHOT_FOLDER + "/*" + (alsoBackups ? BACKUP_FOLDER + "/*" : ""));
     }
@@ -199,11 +198,9 @@ public class BTRFS {
         });
         snapshots.stream().forEach(snapshot -> {
             Snapshot parent = null;
-            //Synchronize on snapshots to ensure that we don't flood scanner/terminal, but only for asking block,
-            //backup block is in full parallel
             //Ask User if there is a parent or not
             var scanner = getSystemInputScanner();
-            LOG.info("Is there a parent for the snapshot of " + snapshot.getFullFileName() + " ? (Yes / Y)");
+            LOG.info("Is there a parent for the snapshot of " + snapshot.getFullFileName() + " ? (Yes / Y / No / N)");
             var response = scanner.nextLine();
             if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
                 //Guess Parent
@@ -217,6 +214,7 @@ public class BTRFS {
                             ROOT_SNAPSHOT_FOLDER).orElse(null));
                 }
             }
+            //Don' need to find parent, null is ok
             final var localParent = parent;
             executor.submit(() -> snapshot.backup(localParent, BACKUP_FOLDER));
         });

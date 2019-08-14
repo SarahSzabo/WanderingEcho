@@ -52,23 +52,47 @@ public class Init {
     }
 
     /**
+     * Prints the generic error message for the input command not being
+     * recognized and then shuts the program down.
+     */
+    private static void printGenericCommandNotRecognized() {
+        EchoUtil.messageThenExit("Command not recognized, shutting down.\n\n"
+                + "OPTIONS: Backup, Delete_Cache");
+    }
+
+    /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
         try {
-            if (args[0].equalsIgnoreCase("Backup")) {
-                BTRFS.commenceBackupOperation();
-            } else if (args[0].equalsIgnoreCase("")) {
-            } else {
-                LOG.info("Command not recognized, shutting down.");
-                System.exit(0);
+            if (args.length >= 1) {
+                //We're Backing Up Data
+                if (args[0].equalsIgnoreCase("Backup")) {
+                    BTRFS.commenceBackupOperation();
+                } //Delete the System Cache, and Possibly Backups as Well
+                else if (args[0].equalsIgnoreCase("Delete_Cache")) {
+                    if (args.length >= 2) {
+                        //Get boolean value from string
+                        boolean value = Boolean.parseBoolean(args[1]);
+                        BTRFS.purgeSnapshots(value);
+                    } else {
+                        EchoUtil.messageThenExit("COMMAND FORMAT: Delete_Cache "
+                                + "(true / false value here for deleting backups as well)");
+                    }
+                } //User Input Incorrect Print Commands
+                else {
+                    printGenericCommandNotRecognized();
+                }
+            } //User Input Incorrect Print Commands
+            else {
+                printGenericCommandNotRecognized();
             }
             //Shutdown JFX Platform & Exit Gracefully
             Platform.exit();
             System.exit(0);
-            //TODO: Primary Test
-            //TODO: Add Delete Snapshots/Backups
+            //TODO: Test Delete Snapshots/Backups
             //TODO: Send over Network
+            //TODO: Add Check for if Snapshots are over 7 days old, never delete last snapshot
         } catch (IOException e) {
             LOG.severe(e.toString());
             throw new IllegalStateException(e);
