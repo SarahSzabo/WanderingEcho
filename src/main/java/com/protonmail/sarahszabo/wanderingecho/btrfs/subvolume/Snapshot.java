@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
@@ -27,20 +28,21 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
     /**
      * The date time formatter for snapshot dates.
      */
-    public static final DateTimeFormatter SNAPSHOT_FORMAT = DateTimeFormatter.ofPattern("dd-mm-yyyy_HH-mm-ss_z");
+    public static final DateTimeFormatter SNAPSHOT_FORMAT = DateTimeFormatter.ofPattern("dd-MM-yyyy_HH:mm:ssz");
 
+    //DateTimeFormatter.ofPattern("dd-mm-yyyy_HH-mm-ss_z");
     /**
      * Gets the current date using the Snapshot formatter as a string.
      *
      * @return The date in string format
      */
     private static String getCurrentDateString() {
-        return LocalDateTime.now().format(SNAPSHOT_FORMAT);
+        return ZonedDateTime.now().format(SNAPSHOT_FORMAT);
     }
 
     private final Path of;
     private final String fullFileName;
-    private final LocalDateTime creationDate;
+    private final ZonedDateTime creationDate;
 
     /**
      * Constructs a new snapshot from an already existing snapshot on the disk.
@@ -51,7 +53,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
         super(existing, existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[0]);
         this.of = null;
         this.fullFileName = existing.toString();
-        this.creationDate = LocalDateTime.parse(existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[1], SNAPSHOT_FORMAT);
+        this.creationDate = ZonedDateTime.parse(existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[1], SNAPSHOT_FORMAT);
     }
 
     /**
@@ -66,7 +68,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
         this.of = of;
         //The filename on the disk: /media/disk/SUBVOL___TIME
         this.fullFileName = super.getLocation().toString();
-        this.creationDate = LocalDateTime.MAX;
+        this.creationDate = ZonedDateTime.of(LocalDateTime.MAX, ZoneId.of("Z"));
     }
 
     /**
@@ -114,8 +116,6 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
      */
     public Backup backup(Snapshot parent, Path location) {
         try {
-            //var builder = EchoUtil.processOPBuilder(true, "btrfs", "send", this.fileName, "|", "btrfs", "receive", location.toString());
-
             //Make bash backup script
             var scriptPath = generateBashBackupScript(parent, location);
             //Execute backup script
@@ -149,7 +149,7 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
      *
      * @return The creation date
      */
-    public LocalDateTime getCreationDate() {
+    public ZonedDateTime getCreationDate() {
         return this.creationDate;
     }
 

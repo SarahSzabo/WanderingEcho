@@ -102,16 +102,17 @@ public class EchoUtil {
         logger.info("COMMAND: " + builder.command().stream().collect(Collectors.joining(" ")));
         //Actually do it
         Process proc = builder.start();
+        //TODO: Do we need this?
         try {
             proc.waitFor(30, TimeUnit.SECONDS);
             if (proc.isAlive()) {
                 proc.destroyForcibly();
-                return false;
+                return true;
             }
         } catch (InterruptedException ex) {
             Logger.getLogger(EchoUtil.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return true;
+        return false;
     }
 
     /**
@@ -153,7 +154,7 @@ public class EchoUtil {
      */
     public static Process processOPNoWait(boolean inheritIO, String... commands) throws IOException {
         var builder = processOPBuilder(inheritIO, commands);
-        System.out.println("COMMAND:" + Arrays.asList(commands).stream().collect(Collectors.joining(",")));
+        System.out.println("COMMAND:" + Arrays.asList(commands).stream().collect(Collectors.joining(" ")));
         return builder.start();
     }
 

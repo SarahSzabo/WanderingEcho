@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -56,7 +57,8 @@ public class BTRFS {
     /**
      * The path to the configuration folder for system configuration files
      */
-    private static final Path CONFIGURATION_FOLDER = Paths.get("System Configuration");
+    private static final Path CONFIGURATION_FOLDER = Paths.get(System.getProperty("user.home"), ".Wandering Echo")
+            .resolve("System Configuration");
 
     /**
      * The BTRFS config file.
@@ -142,6 +144,26 @@ public class BTRFS {
             Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
         }
+        try {
+            BTRFS.mountRootFilesystem();
+        } catch (IOException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException("Filesystem couldn't be mounted", ex);
+        }
+        //Add BTRFS System & User Subvolumes
+        SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
+        SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
+    }
+
+    /**
+     * Gets the string that you send, but in quotes. Example: s -> "s". Uses
+     * quote literals.
+     *
+     * @param str The input string as an object
+     * @return The string in quotes
+     */
+    public static String stringInQuotes(Object str) {
+        return "\"" + str + "\"";
     }
 
     /**
@@ -151,7 +173,20 @@ public class BTRFS {
      * @throws IOException If something happened
      */
     public static void purgeSnapshots(boolean alsoBackups) throws IOException {
-        processOP("btrfs", "subvolume", "delete", ROOT_SNAPSHOT_FOLDER + "/*" + (alsoBackups ? BACKUP_FOLDER + "/*" : ""));
+        var scriptPath = Files.createTempFile("Wandering Echo Subvolume Delete Script", ".sh");
+        var string = "btrfs subvolume delete ";
+        //Make the rest of the delete string SNAPFOLDER1/* SNAPFOLDER2/*
+        string += SUBVOLUME_LIST.stream().map((subvolume) -> {
+            try {
+                return stringInQuotes(BTRFS.configureSnapshotFilesystem(subvolume).toString() + "/*");
+            } catch (IOException ex) {
+                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+                throw new IllegalStateException("Couldn't get snapshot file system", ex);
+            }
+            //TODO: Every subvolume should know where its snapshot folder is.
+        }).collect(Collectors.joining(" ")) + (alsoBackups ? " " + stringInQuotes(BACKUP_FOLDER + "/*") : "");
+        Files.write(scriptPath, string.getBytes(), StandardOpenOption.CREATE);
+        processOP(true, "bash", scriptPath.toString());
     }
 
     /**
@@ -184,15 +219,9 @@ public class BTRFS {
      * @throws java.io.IOException If something happened
      */
     public static void commenceBackupOperation() throws IOException {
-        //Do backup
-        var list = BTRFS.getSubvolumeList();
-        BTRFS.mountRootFilesystem();
-        //Add BTRFS System & User Subvolumes
-        list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
-        list.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
         //Do Snapshots
-        var snapshots = new ArrayList<Snapshot>(list.size());
-        list.stream().parallel().map(subvolume -> subvolume.snapshot()).forEach(snapshot -> {
+        var snapshots = new ArrayList<Snapshot>(SUBVOLUME_LIST.size());
+        SUBVOLUME_LIST.stream().parallel().map(subvolume -> subvolume.snapshot()).forEach(snapshot -> {
             snapshots.add(snapshot);
             snapshot.create();
         });
