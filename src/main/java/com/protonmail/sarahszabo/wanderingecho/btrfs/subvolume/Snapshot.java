@@ -5,6 +5,9 @@
  */
 package com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
 import com.protonmail.sarahszabo.wanderingecho.util.EchoUtil;
 import java.io.IOException;
@@ -29,6 +32,10 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
      * The date time formatter for snapshot dates.
      */
     public static final DateTimeFormatter SNAPSHOT_FORMAT = DateTimeFormatter.ofPattern("dd-MM-yyyy_HH:mm:ssz");
+    /**
+     * The logger for this class.
+     */
+    private static final Logger LOG = Logger.getLogger(Snapshot.class.getName());
 
     //DateTimeFormatter.ofPattern("dd-mm-yyyy_HH-mm-ss_z");
     /**
@@ -40,20 +47,26 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
         return ZonedDateTime.now().format(SNAPSHOT_FORMAT);
     }
 
+    @JsonProperty
     private final Path of;
+    @JsonIgnore
     private final String fullFileName;
+    @JsonProperty
     private final ZonedDateTime creationDate;
+    @JsonProperty
+    private final Subvolume parentSubvolume;
 
     /**
-     * Constructs a new snapshot from an already existing snapshot on the disk.
+     * Copy constructor that sets the date appropriatly.
      *
-     * @param existing The already existing snapshot on the disk
+     * @param snapshot The snapshot to copy from
      */
-    public Snapshot(Path existing) {
-        super(existing, existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[0]);
-        this.of = null;
-        this.fullFileName = existing.toString();
-        this.creationDate = ZonedDateTime.parse(existing.getFileName().toString().split(BTRFS.SNAPSHOT_SEPARATOR)[1], SNAPSHOT_FORMAT);
+    private Snapshot(Snapshot snapshot) {
+        super(snapshot.getLocation(), snapshot.getName());
+        this.of = snapshot.of;
+        this.fullFileName = snapshot.fullFileName;
+        this.parentSubvolume = snapshot.parentSubvolume;
+        this.creationDate = ZonedDateTime.now();
     }
 
     /**
@@ -62,12 +75,16 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
      *
      * @param of The subvolume to take a snapshot of
      * @param location The location to place the snapshot
+     * @param parent The parent subvolume
      */
-    public Snapshot(Path of, Path location) {
+    @JsonCreator
+    public Snapshot(@JsonProperty(value = "of") Path of, @JsonProperty(value = "location") Path location,
+            @JsonProperty(value = "parentSubvolume") Subvolume parent) {
         super(location.resolve(of.getFileName() + BTRFS.SNAPSHOT_SEPARATOR + getCurrentDateString()), of.getFileName().toString());
         this.of = of;
         //The filename on the disk: /media/disk/SUBVOL___TIME
         this.fullFileName = super.getLocation().toString();
+        this.parentSubvolume = Objects.requireNonNull(parent);
         this.creationDate = ZonedDateTime.of(LocalDateTime.MAX, ZoneId.of("Z"));
     }
 
@@ -79,11 +96,11 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
     @Override
     public Snapshot create() {
         try {
-            System.out.println(getLocation().resolve(
-                    getName() + "___" + getCurrentDateString()));
             //Command: btrfs subvolume snapshot "thing to snapshot" "place to put snapshot"
             EchoUtil.processOP(true, "btrfs", "subvolume", "snapshot", "-r", this.of.toString(), this.fullFileName);
-            return new Snapshot(super.getLocation());
+            var snapshotWithTimestamp = new Snapshot(this);
+            BTRFS.saveSnapshot(snapshotWithTimestamp);
+            return snapshotWithTimestamp;
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -118,9 +135,10 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
         try {
             //Make bash backup script
             var scriptPath = generateBashBackupScript(parent, location);
+            var backup = new Backup(location, this, ZonedDateTime.now());
             //Execute backup script
             EchoUtil.processOP("bash", scriptPath.toString());
-            return new Backup(location);
+            return backup;
         } catch (IOException ex) {
             Logger.getLogger(Snapshot.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException(ex);
@@ -178,4 +196,12 @@ public class Snapshot extends BTRFSPhysicalLocationItem<Snapshot> {
         return true;
     }
 
+    /**
+     * Gets the subvolume that this snapshot is of.
+     *
+     * @return The subvolume that this snapshot is an image of
+     */
+    public Subvolume getParentSubvolume() {
+        return this.parentSubvolume;
+    }
 }

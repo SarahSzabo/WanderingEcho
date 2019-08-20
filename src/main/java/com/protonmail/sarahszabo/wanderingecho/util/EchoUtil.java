@@ -6,12 +6,8 @@
 package com.protonmail.sarahszabo.wanderingecho.util;
 
 import java.io.IOException;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
@@ -38,7 +34,7 @@ public class EchoUtil {
     static {
         try {
             //Make a new temp directory
-            TEMP_DIRECTORY = Files.createTempDirectory("Wandering Echo Temprary Directory");
+            TEMP_DIRECTORY = Files.createTempDirectory("Wandering Echo Temporary Directory");
         } catch (IOException ex) {
             Logger.getLogger(EchoUtil.class.getName()).log(Level.SEVERE, null, ex);
             throw new IllegalStateException("Unable to create temp directory", ex);
@@ -77,6 +73,22 @@ public class EchoUtil {
      * completion. Does not inherit IO.
      *
      * @param commands The commands to execute
+     * @return Whether or not the operation timed out or not
+     */
+    public static boolean processOPNOE(String... commands) {
+        try {
+            return processOP(true, commands);
+        } catch (IOException ex) {
+            Logger.getLogger(EchoUtil.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException("Something went wrong with processOP", ex);
+        }
+    }
+
+    /**
+     * Launches a new process in the temp directory, and waits for its
+     * completion. Does not inherit IO.
+     *
+     * @param commands The commands to execute
      * @throws IOException InterruptedException If something went wrong
      * @return Whether or not the operation timed out or not
      */
@@ -102,7 +114,6 @@ public class EchoUtil {
         logger.info("COMMAND: " + builder.command().stream().collect(Collectors.joining(" ")));
         //Actually do it
         Process proc = builder.start();
-        //TODO: Do we need this?
         try {
             proc.waitFor(30, TimeUnit.SECONDS);
             if (proc.isAlive()) {
@@ -141,6 +152,25 @@ public class EchoUtil {
      */
     public static boolean processOP(boolean inheritIO, String... commands) throws IOException {
         return processOP(inheritIO, null, commands);
+    }
+
+    /**
+     * Launches a new process in the temp directory, and does not wait for its
+     * completion.
+     *
+     * @param inheritIO Should the streams be merged
+     * @param commands The commands to execute
+     * @return The generated process
+     */
+    public static Process processOPNoWaitNOE(boolean inheritIO, String... commands) {
+        try {
+            var builder = processOPBuilder(inheritIO, commands);
+            System.out.println("COMMAND:" + Arrays.asList(commands).stream().collect(Collectors.joining(" ")));
+            return builder.start();
+        } catch (IOException ex) {
+            Logger.getLogger(EchoUtil.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException("Something went wrong in the no wait processOP subroutine", ex);
+        }
     }
 
     /**

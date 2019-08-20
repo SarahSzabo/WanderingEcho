@@ -6,17 +6,9 @@
 package com.protonmail.sarahszabo.wanderingecho;
 
 import com.protonmail.sarahszabo.wanderingecho.btrfs.BTRFS;
-import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
-import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import com.protonmail.sarahszabo.wanderingecho.util.EchoUtil;
 import java.io.IOException;
-import java.nio.file.FileStore;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
-import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Scanner;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 import javafx.application.Platform;
@@ -35,7 +27,7 @@ public class Init {
     /**
      * The version number of the program.
      */
-    public static final String PROGRAM_VERSION = "0.1α";
+    public static final String PROGRAM_VERSION = "1.0α";
 
     /**
      * The version number and name of the program.
@@ -65,6 +57,8 @@ public class Init {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+        //Print args for debugging
+        LOG.fine(Arrays.asList(args).toString());
         try {
             if (args.length >= 1) {
                 //We're Backing Up Data
@@ -91,9 +85,7 @@ public class Init {
             //Shutdown JFX Platform & Exit Gracefully
             Platform.exit();
             System.exit(0);
-            //TODO: Test Delete Snapshots/Backups
             //TODO: Send over Network
-            //TODO: Add Check for if Snapshots are over 7 days old, never delete last snapshot
         } catch (IOException e) {
             LOG.severe(e.toString());
             throw new IllegalStateException(e);

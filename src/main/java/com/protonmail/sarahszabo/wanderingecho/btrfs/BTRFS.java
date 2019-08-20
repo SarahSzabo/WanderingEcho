@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Backup;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import com.protonmail.sarahszabo.wanderingecho.ui.UI;
@@ -19,8 +20,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Scanner;
+import java.util.TreeSet;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,6 +65,12 @@ public class BTRFS {
             .resolve("System Configuration");
 
     /**
+     * The folder that stores files of our snapshot objects that share the same
+     * filename as the ones in the snapshots folders.
+     */
+    private static final Path SNAPSHOT_ASSOCIATION_FOLDER = CONFIGURATION_FOLDER.resolve("Snapshot Association Folder");
+
+    /**
      * The BTRFS config file.
      */
     private static final Path BTRFS_CONFIG_FILE = CONFIGURATION_FOLDER.resolve("BTRFS Config.json");
@@ -69,6 +79,12 @@ public class BTRFS {
      * A list of subvolumes to snapshot.
      */
     private static final SubvolumeList SUBVOLUME_LIST;
+
+    /**
+     * A map of the backups by path. Give a path on the disk, get a backup.
+     */
+    @JsonProperty
+    private static final BackupMap backupMap;
 
     /**
      * A value representing whether or not the root file-system is mounted or
@@ -87,7 +103,7 @@ public class BTRFS {
     public static final String SNAPSHOT_SEPARATOR = "___";
 
     private static final ExecutorService executor = Executors
-            .newCachedThreadPool(new BasicThreadFactory.Builder().daemon(true).namingPattern("Wandering Echo BTRFS Task Thread %d").build());
+            .newCachedThreadPool(new BasicThreadFactory.Builder().namingPattern("Wandering Echo BTRFS Task Thread %d").build());
 
     /**
      * Class wide logger.
@@ -95,16 +111,22 @@ public class BTRFS {
     private static final Logger LOG = Logger.getLogger(BTRFS.class.getName());
 
     static {
+        //Register JDK8 time & date mapping modules for correct serialization
         MAPPER.findAndRegisterModules();
+        //Indentation is nice :)
         MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
+        //Check for root
         try ( var scanner = getProcessInputScanner(processOPNoWait(false, "whoami"))) {
             while (scanner.hasNext()) {
                 if (!scanner.next().equalsIgnoreCase("root")) {
                     messageThenExit("We aren't root!, Run using sudo for root level");
+                } else {
+                    LOG.info("We're root");
                 }
             }
             //Create snapshots and mounting folders
             Files.createDirectories(ROOT_SNAPSHOT_FOLDER);
+            Files.createDirectories(SNAPSHOT_ASSOCIATION_FOLDER);
             //If config doesn't exist, make a new one
             if (Files.notExists(BTRFS_CONFIG_FILE)) {
                 Files.createDirectories(CONFIGURATION_FOLDER);
@@ -113,6 +135,7 @@ public class BTRFS {
                 boolean moreSubvolumes = true;
                 //Initialize subvolume list
                 SUBVOLUME_LIST = new SubvolumeList();
+                backupMap = new BackupMap();
                 LOG.info("Subvolume List not Detected, Generating a New List");
                 do {
                     //Only add to path list if we have something
@@ -127,7 +150,7 @@ public class BTRFS {
                 BACKUP_FOLDER = UI.getDirectory("Select a Directory for Backups to Appear In").get();
                 //Write Config File
                 MAPPER.writeValue(BTRFS_CONFIG_FILE.toFile(),
-                        new BTRFSConfig(SUBVOLUME_LIST, BACKUP_FOLDER));
+                        new BTRFSConfig(SUBVOLUME_LIST, BACKUP_FOLDER, backupMap));
                 /*System.out.println("\n\n");
                 MAPPER.writeValue(System.out, SUBVOLUME_LIST);
                 System.out.println("\n\n\n");
@@ -138,6 +161,7 @@ public class BTRFS {
                 var config = MAPPER.readValue(BTRFS_CONFIG_FILE.toFile(), BTRFSConfig.class);
                 SUBVOLUME_LIST = config.getSubvolumes();
                 BACKUP_FOLDER = config.getTypicalBackupLocation();
+                backupMap = config.getBackupMap();
                 LOG.info("Subvolume List Detected: " + SUBVOLUME_LIST);
             }
         } catch (IOException ex) {
@@ -153,6 +177,41 @@ public class BTRFS {
         //Add BTRFS System & User Subvolumes
         SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
         SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                unmountRootFilesystem();
+            } catch (IOException ex) {
+                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+                throw new IllegalStateException("Couldn't Unmount Filesystem!");
+            }
+        }, "Wandering Echo Root Filesystem Unmounter Thread"));
+    }
+
+    /**
+     * Sends backups over SSH.
+     */
+    public static void sendBackupsOverSSH() {
+        //Get sorted set of backup objects sorted by date
+        var backupValuesSortedByDate = new TreeSet<Backup>(backupMap.values());
+        //Since all snapshots are backed up at the same time, the results are the top 3
+        var backupStream = backupValuesSortedByDate.stream().limit(3);
+        var scriptPathList = new ArrayList<Path>(SUBVOLUME_LIST.size());
+        //Record backup script file locations for parallel send
+        backupStream.forEach(backup -> {
+            try {
+                //Generate backup script for each backup since we can't do it directly
+                var scriptPath = Files.createTempFile("Wandering Echo Temporary SSH Script for " + backup, ".sh");
+                Files.write(scriptPath, ("btrfs send " + backup.getLocation().toString() + " | SSH SciLab0 "
+                        + stringInQuotes("btrfs receive /media/sarah/SENTINEL")).getBytes());
+                scriptPathList.add(scriptPath);
+                //TODO: Make a general version of this before mainline release
+            } catch (IOException ex) {
+                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+                throw new IllegalStateException("Something went wrong in the SSH back stream block", ex);
+            }
+        });
+        //Send backups
+        scriptPathList.parallelStream().forEach(scriptPath -> processOPNoWaitNOE(true, "bash " + scriptPath));
     }
 
     /**
@@ -167,24 +226,63 @@ public class BTRFS {
     }
 
     /**
+     * Gets a snapshot from the snapshot association folder. Doesn't throw an
+     * exception if an I/O error occurred.
+     *
+     * @param existingSnapshot The existing BTRFS snapshot on the disk
+     * @return The snapshot object of the BTRFS snapshot
+     */
+    public static Snapshot getStoredSnapshotNOE(Path existingSnapshot) {
+        try {
+            return MAPPER.readValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(existingSnapshot.getFileName()).toFile(),
+                    Snapshot.class);
+        } catch (IOException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException("Unable to resolve snapshot from BTRFS snapshot", ex);
+        }
+    }
+
+    /**
+     * Gets a snapshot from the snapshot association folder.
+     *
+     * @param existingSnapshot The existing BTRFS snapshot on the disk
+     * @return The snapshot object of the BTRFS snapshot
+     * @throws IOException If something went wrong
+     */
+    public static Snapshot getStoredSnapshot(Path existingSnapshot) throws IOException {
+        return MAPPER.readValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(existingSnapshot.getFileName() + ".JSON").toFile(),
+                Snapshot.class);
+    }
+
+    /**
+     * Saves a snapshot to the snapshot association folder for associating the
+     * BTRFS snapshot with our Snapshot objects.
+     *
+     * @param snapshot The snapshot to save
+     * @throws IOException If something went wrong
+     */
+    public static void saveSnapshot(Snapshot snapshot) throws IOException {
+        MAPPER.writeValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(snapshot.getLocation().getFileName() + ".JSON").toFile(), snapshot);
+    }
+
+    /**
      * Purges the entire snapshot cache.
      *
      * @param alsoBackups If true, also purges the backup cache
      * @throws IOException If something happened
      */
     public static void purgeSnapshots(boolean alsoBackups) throws IOException {
-        var scriptPath = Files.createTempFile("Wandering Echo Subvolume Delete Script", ".sh");
-        var string = "btrfs subvolume delete ";
+        var scriptPath = Files.createTempFile("Wandering Echo Snapshot Delete Script", ".sh");
+        var string = "btrfs subvolume delete -C ";
         //Make the rest of the delete string SNAPFOLDER1/* SNAPFOLDER2/*
         string += SUBVOLUME_LIST.stream().map((subvolume) -> {
             try {
-                return stringInQuotes(BTRFS.configureSnapshotFilesystem(subvolume).toString() + "/*");
+                return BTRFS.configureSnapshotFilesystem(subvolume).toString() + "/*";
             } catch (IOException ex) {
                 Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
                 throw new IllegalStateException("Couldn't get snapshot file system", ex);
             }
-            //TODO: Every subvolume should know where its snapshot folder is.
-        }).collect(Collectors.joining(" ")) + (alsoBackups ? " " + stringInQuotes(BACKUP_FOLDER + "/*") : "");
+        }).distinct().collect(Collectors.joining(" ")) + (alsoBackups ? " " + BACKUP_FOLDER + "/*" : "");
         Files.write(scriptPath, string.getBytes(), StandardOpenOption.CREATE);
         processOP(true, "bash", scriptPath.toString());
     }
@@ -200,7 +298,7 @@ public class BTRFS {
             var pathStream = Files.list(ROOT_SNAPSHOT_FOLDER);
             //Get all dates after the triple underscore & filter by name (if we're looking at @, only get @ subvolumes),
             //also ifnore selected subvolume's snapshot
-            var snapshotList = pathStream.parallel().map(Snapshot::new).filter(snap -> snap.getName()
+            var snapshotList = pathStream.parallel().map(BTRFS::getStoredSnapshotNOE).filter(snap -> snap.getName()
                     .equalsIgnoreCase(snapshot.getName()) && !snap.equals(snapshot)).collect(Collectors.toList());
             //Sort by earliest creation date, we want the latest
             snapshotList.sort((snap0, snap1) -> snap0.getCreationDate().compareTo(snap1.getCreationDate()));
@@ -225,6 +323,7 @@ public class BTRFS {
             snapshots.add(snapshot);
             snapshot.create();
         });
+        var callableList = new ArrayList<Callable<Backup>>(3);
         snapshots.stream().forEach(snapshot -> {
             Snapshot parent = null;
             //Ask User if there is a parent or not
@@ -239,14 +338,22 @@ public class BTRFS {
                 if (response.equalsIgnoreCase("Yes") || response.equalsIgnoreCase("Y")) {
                     parent = guess;
                 } else {
-                    parent = new Snapshot(UI.getDirectory("Choose an Already Existing Snapshot",
+                    parent = BTRFS.getStoredSnapshotNOE(UI.getDirectory("Choose an Already Existing Snapshot",
                             ROOT_SNAPSHOT_FOLDER).orElse(null));
                 }
             }
             //Don' need to find parent, null is ok
             final var localParent = parent;
-            executor.submit(() -> snapshot.backup(localParent, BACKUP_FOLDER));
+            //Add to List of Tasks to Launch
+            callableList.add(() -> snapshot.backup(localParent, BACKUP_FOLDER));
         });
+        try {
+            //Execute List of Tasks
+            executor.invokeAll(callableList);
+        } catch (InterruptedException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException("We've been interrupted while waiting for the BTRFS backup tasks to complete!", ex);
+        }
     }
 
     /**
@@ -269,7 +376,26 @@ public class BTRFS {
     }
 
     /**
+     * Unmounts the root filesystem. Does nothing if not mounted.
+     *
+     * @throws IOException If something went wrong
+     */
+    public static void unmountRootFilesystem() throws IOException {
+        //Should we ever need it, unmounting by UUID:
+        /*$ findmnt -rn -S UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -o TARGET
+        /mnt/mountpoint*/
+        //OR: umount /dev/disk/by-uuid/$UUI
+        //Check if filesystem mounted, if so, unmount
+        if (ROOT_FILESYSTEM_MOUNTED.get()) {
+            processOP("umount", MOUNTING_FOLDER.toString());
+            LOG.info("Filesystem Unmounted!");
+        }
+    }
+
+    /**
      * Mounts the root filesystem or does nothing if already mounted
+     *
+     * @throws java.io.IOException If something went wrong
      */
     public static void mountRootFilesystem() throws IOException {
         if (!ROOT_FILESYSTEM_MOUNTED.get()) {
@@ -300,15 +426,6 @@ public class BTRFS {
     }
 
     /**
-     * Gets the instance of BTRFS.
-     *
-     * @return The instance
-     */
-    public static BTRFS getInstance() {
-        return BTRFSHolder.INSTANCE;
-    }
-
-    /**
      * No public instances.
      */
     private BTRFS() {
@@ -319,26 +436,57 @@ public class BTRFS {
      */
     private static class BTRFSConfig {
 
-        @JsonProperty(value = "subvolumes")
+        @JsonProperty
         private final SubvolumeList subvolumes;
-        @JsonProperty(value = "typicalBackupLocation")
+        @JsonProperty
         private final Path typicalBackupLocation;
+        @JsonProperty
+        private final BackupMap backupMap;
 
         @JsonCreator
-        public BTRFSConfig(@JsonProperty(value = "subvolumes") SubvolumeList subvolumes,
-                @JsonProperty(value = "typicalBackupLocation") Path typicalBackupLocation) {
+        BTRFSConfig(@JsonProperty(value = "subvolumes") SubvolumeList subvolumes,
+                @JsonProperty(value = "typicalBackupLocation") Path typicalBackupLocation,
+                @JsonProperty(value = "backupMap") BackupMap backupMap) {
             this.subvolumes = subvolumes;
             this.typicalBackupLocation = typicalBackupLocation;
+            this.backupMap = backupMap;
         }
 
+        /**
+         * Gets the previous subvolume list.
+         *
+         * @return The list
+         */
         public SubvolumeList getSubvolumes() {
             return this.subvolumes;
         }
 
+        /**
+         * Gets the previous external backup location for the program.
+         *
+         * @return The location
+         */
         public Path getTypicalBackupLocation() {
             return this.typicalBackupLocation;
         }
 
+        /**
+         * Gets the previous backup map
+         *
+         * @return The map
+         */
+        public BackupMap getBackupMap() {
+            return this.backupMap;
+        }
+
+    }
+
+    /**
+     * Wrapper class for Jackson serialization.
+     */
+    private static class BackupMap extends HashMap<Path, Backup> {
+
+        private static final long serialVersionUID = 1L;
     }
 
     /**
@@ -347,16 +495,5 @@ public class BTRFS {
     private static class SubvolumeList extends ArrayList<Subvolume> {
 
         private static final long serialVersionUID = 1L;
-    }
-
-    /**
-     * Holder class for the instance.
-     */
-    private static class BTRFSHolder {
-
-        /**
-         * Only instance
-         */
-        private static final BTRFS INSTANCE = new BTRFS();
     }
 }
