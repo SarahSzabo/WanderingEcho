@@ -157,13 +157,10 @@ public class BTRFS {
             try {
                 //Only do the operation if the config file exists (We might have called system reset
                 if (Files.exists(BTRFS_CONFIG_FILE)) {
-                    for (Subvolume sub : SUBVOLUME_LIST) {
-                        //Don't allow @ or @home to make it into the list, they are temporary and disappear on unmount
-                        if (sub.getName().contains("@")) {
-                            SUBVOLUME_LIST.remove(sub);
-                        }
-                    }
-                    MAPPER.writeValue(BTRFS_CONFIG_FILE.toFile(), new BTRFSConfig(SUBVOLUME_LIST, BACKUP_FOLDER, backupMap));
+                    var newSubvolumeList = new SubvolumeList();
+                    SUBVOLUME_LIST.stream().filter(sub -> !sub.getName().equals("@")
+                            && !sub.getName().equalsIgnoreCase("@home")).forEach(sub -> newSubvolumeList.add(sub));
+                    MAPPER.writeValue(BTRFS_CONFIG_FILE.toFile(), new BTRFSConfig(newSubvolumeList, BACKUP_FOLDER, backupMap));
                 }
             } catch (IOException ex) {
                 Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
