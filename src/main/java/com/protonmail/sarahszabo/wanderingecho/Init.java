@@ -50,31 +50,41 @@ public class Init {
      */
     private static void printGenericCommandNotRecognized() {
         EchoUtil.messageThenExit("Command not recognized, shutting down.\n\n"
-                + "OPTIONS: Backup, Delete_Cache");
+                + "OPTIONS: Backup, Delete_Cache, System_Reset, Configure");
     }
 
     /**
      * @param args the command line arguments
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         //Print args for debugging
         LOG.fine(Arrays.asList(args).toString());
         try {
             if (args.length >= 1) {
                 //We're Backing Up Data
                 if (args[0].equalsIgnoreCase("Backup")) {
+                    //Run configuration
+                    BTRFS.getInstance();
                     BTRFS.commenceBackupOperation();
                 } //Delete the System Cache, and Possibly Backups as Well
                 else if (args[0].equalsIgnoreCase("Delete_Cache")) {
                     if (args.length >= 2) {
                         //Get boolean value from string
                         boolean value = Boolean.parseBoolean(args[1]);
+                        //Run configuration
+                        BTRFS.getInstance();
                         BTRFS.purgeSnapshots(value);
                     } else {
                         EchoUtil.messageThenExit("COMMAND FORMAT: Delete_Cache "
                                 + "(true / false value here for deleting backups as well)");
                     }
-                } //User Input Incorrect Print Commands
+                    //Reset BTRFS Configuration
+                } else if (args[0].equalsIgnoreCase("System_Reset")) {
+                    BTRFS.resetConfiguration();
+                } //Run basic configuration
+                else if (args[0].equalsIgnoreCase("Configure")) {
+                    BTRFS.getInstance();
+                }//User Input Incorrect Print Commands
                 else {
                     printGenericCommandNotRecognized();
                 }

@@ -8,7 +8,6 @@ package com.protonmail.sarahszabo.wanderingecho.ui;
 import com.protonmail.sarahszabo.wanderingecho.Init;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
@@ -17,7 +16,9 @@ import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.image.Image;
 import javafx.scene.layout.Region;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
@@ -43,6 +44,24 @@ public final class UI {
     }
 
     /**
+     * Sets the stage's icon.
+     *
+     * @param dialog The dialog whose icon is to be set
+     */
+    private static void setIcon(Dialog dialog) {
+        setIcon((Stage) dialog.getDialogPane().getScene().getWindow());
+    }
+
+    /**
+     * Sets the stage's icon.
+     *
+     * @param stage The icon of the stage to set
+     */
+    private static void setIcon(Stage stage) {
+        stage.getIcons().add(new Image(UI.class.getResource("/Wandering Echo Icon.jpg").toString()));
+    }
+
+    /**
      * Shows a confirmation dialog with a message and title.
      *
      * @param title The title of the dialog
@@ -58,6 +77,7 @@ public final class UI {
                     alert.setTitle(title);
                     var stage = (Stage) alert.getDialogPane().getScene().getWindow();
                     stage.setResizable(true);
+                    setIcon(stage);
                     alert.getDialogPane().setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
                     queue.put(alert.showAndWait());
                 } catch (InterruptedException ex) {
@@ -86,6 +106,7 @@ public final class UI {
                     TextInputDialog dialog = new TextInputDialog();
                     dialog.setTitle(title);
                     dialog.setContentText(contextText);
+                    setIcon(dialog);
                     textQueue.put(dialog.showAndWait());
                 } catch (InterruptedException ex) {
                     Logger.getLogger(UI.class.getName()).log(Level.SEVERE, null, ex);

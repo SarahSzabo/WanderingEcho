@@ -9,11 +9,13 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Backup;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Snapshot;
 import com.protonmail.sarahszabo.wanderingecho.btrfs.subvolume.Subvolume;
 import com.protonmail.sarahszabo.wanderingecho.ui.UI;
 import static com.protonmail.sarahszabo.wanderingecho.util.EchoUtil.*;
+import com.protonmail.sarahszabo.wanderingecho.util.PathDeserializer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +58,7 @@ public class BTRFS {
     /**
      * The typical backup folder for backups.
      */
-    private static final Path BACKUP_FOLDER;
+    private static Path BACKUP_FOLDER;
 
     /**
      * The path to the configuration folder for system configuration files
@@ -78,13 +80,12 @@ public class BTRFS {
     /**
      * A list of subvolumes to snapshot.
      */
-    private static final SubvolumeList SUBVOLUME_LIST;
+    private static SubvolumeList SUBVOLUME_LIST;
 
     /**
      * A map of the backups by path. Give a path on the disk, get a backup.
      */
-    @JsonProperty
-    private static final BackupMap backupMap;
+    private static BackupMap backupMap;
 
     /**
      * A value representing whether or not the root file-system is mounted or
@@ -110,11 +111,20 @@ public class BTRFS {
      */
     private static final Logger LOG = Logger.getLogger(BTRFS.class.getName());
 
+    /**
+     * The BTRFS instance
+     */
+    private static BTRFS INSTANCE;
+
     static {
         //Register JDK8 time & date mapping modules for correct serialization
         MAPPER.findAndRegisterModules();
         //Indentation is nice :)
         MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
+        //Enable Path Deserialization
+        SimpleModule module = new SimpleModule("Path Deserializer Module");
+        module.addKeyDeserializer(Path.class, new PathDeserializer());
+        MAPPER.registerModule(module);
         //Check for root
         try ( var scanner = getProcessInputScanner(processOPNoWait(false, "whoami"))) {
             while (scanner.hasNext()) {
@@ -127,6 +137,90 @@ public class BTRFS {
             //Create snapshots and mounting folders
             Files.createDirectories(ROOT_SNAPSHOT_FOLDER);
             Files.createDirectories(SNAPSHOT_ASSOCIATION_FOLDER);
+
+        } catch (IOException ex) {
+            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IllegalStateException(ex);
+        }
+        //Add unmount thread
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                //Unmount to be nice
+                unmountRootFilesystem();
+            } catch (IOException ex) {
+                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+                throw new IllegalStateException("Couldn't Unmount Filesystem!");
+            }
+        }, "Wandering Echo Root Filesystem Unmounter Thread"));
+        //Add thread to save final config file state
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                //Only do the operation if the config file exists (We might have called system reset
+                if (Files.exists(BTRFS_CONFIG_FILE)) {
+                    for (Subvolume sub : SUBVOLUME_LIST) {
+                        //Don't allow @ or @home to make it into the list, they are temporary and disappear on unmount
+                        if (sub.getName().contains("@")) {
+                            SUBVOLUME_LIST.remove(sub);
+                        }
+                    }
+                    MAPPER.writeValue(BTRFS_CONFIG_FILE.toFile(), new BTRFSConfig(SUBVOLUME_LIST, BACKUP_FOLDER, backupMap));
+                }
+            } catch (IOException ex) {
+                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
+                throw new IllegalStateException("Couldn't write config file as a part of the shutdown hook", ex);
+            }
+        }, "Wandering Echo BTRFS Config Writer Thread"));
+    }
+
+    /**
+     * Adds a backup to the internal backup registry.
+     *
+     * @param backup The backup to add
+     */
+    public static void addBackup(Backup backup) {
+        backupMap.put(backup.getParentSnapshot().getParentSubvolume().getLocation(), backup);
+    }
+
+    /**
+     * Deletes the BTRFS configuration file to reset the configuration.
+     *
+     * @throws IOException Is the delete failed
+     */
+    public static void resetConfiguration() throws IOException {
+        INSTANCE = null;
+        Files.deleteIfExists(BTRFS_CONFIG_FILE);
+        LOG.info("System Configuration Reset");
+    }
+
+    /**
+     * Checks the configuration before allowing access to subroutines. No
+     * exceptions will be thrown.
+     */
+    private static boolean isConfigured() {
+        return INSTANCE != null;
+
+    }
+
+    /**
+     * Checks the configuration before allowing access to subroutines.
+     *
+     * @throws NotConfiguredExeption If we're not configured
+     */
+    private static void checkConfiguration() {
+        if (INSTANCE == null) {
+            throw new NotConfiguredExeption("System not Configured, call getInstance() before using methods");
+        }
+    }
+
+    /**
+     * Gets the instance of BTRFS. Also runs set up routines.
+     *
+     * @return
+     * @throws java.io.IOException If something went wrong
+     */
+    public static BTRFS getInstance() throws IOException {
+        //We're null, run initialization routine
+        if (INSTANCE == null) {
             //If config doesn't exist, make a new one
             if (Files.notExists(BTRFS_CONFIG_FILE)) {
                 Files.createDirectories(CONFIGURATION_FOLDER);
@@ -164,33 +258,22 @@ public class BTRFS {
                 backupMap = config.getBackupMap();
                 LOG.info("Subvolume List Detected: " + SUBVOLUME_LIST);
             }
-        } catch (IOException ex) {
-            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
-            throw new IllegalStateException(ex);
-        }
-        try {
             BTRFS.mountRootFilesystem();
-        } catch (IOException ex) {
-            Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
-            throw new IllegalStateException("Filesystem couldn't be mounted", ex);
+            //Add BTRFS System & User Subvolumes
+            SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
+            SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
+            //Initialize BTRFS
+            INSTANCE = new BTRFS();
         }
-        //Add BTRFS System & User Subvolumes
-        SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@")));
-        SUBVOLUME_LIST.add(new Subvolume(BTRFS.MOUNTING_FOLDER.resolve("@home")));
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                unmountRootFilesystem();
-            } catch (IOException ex) {
-                Logger.getLogger(BTRFS.class.getName()).log(Level.SEVERE, null, ex);
-                throw new IllegalStateException("Couldn't Unmount Filesystem!");
-            }
-        }, "Wandering Echo Root Filesystem Unmounter Thread"));
+        return INSTANCE;
     }
 
     /**
      * Sends backups over SSH.
      */
     public static void sendBackupsOverSSH() {
+        //Ensure we're initialized
+        checkConfiguration();
         //Get sorted set of backup objects sorted by date
         var backupValuesSortedByDate = new TreeSet<Backup>(backupMap.values());
         //Since all snapshots are backed up at the same time, the results are the top 3
@@ -233,6 +316,8 @@ public class BTRFS {
      * @return The snapshot object of the BTRFS snapshot
      */
     public static Snapshot getStoredSnapshotNOE(Path existingSnapshot) {
+        //Ensure we're initialized
+        checkConfiguration();
         try {
             return MAPPER.readValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(existingSnapshot.getFileName()).toFile(),
                     Snapshot.class);
@@ -250,6 +335,8 @@ public class BTRFS {
      * @throws IOException If something went wrong
      */
     public static Snapshot getStoredSnapshot(Path existingSnapshot) throws IOException {
+        //Ensure we're initialized
+        checkConfiguration();
         return MAPPER.readValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(existingSnapshot.getFileName() + ".JSON").toFile(),
                 Snapshot.class);
     }
@@ -262,6 +349,8 @@ public class BTRFS {
      * @throws IOException If something went wrong
      */
     public static void saveSnapshot(Snapshot snapshot) throws IOException {
+        //Ensure we're initialized
+        checkConfiguration();
         MAPPER.writeValue(SNAPSHOT_ASSOCIATION_FOLDER.resolve(snapshot.getLocation().getFileName() + ".JSON").toFile(), snapshot);
     }
 
@@ -272,6 +361,8 @@ public class BTRFS {
      * @throws IOException If something happened
      */
     public static void purgeSnapshots(boolean alsoBackups) throws IOException {
+        //Ensure we're initialized
+        checkConfiguration();
         var scriptPath = Files.createTempFile("Wandering Echo Snapshot Delete Script", ".sh");
         var string = "btrfs subvolume delete -C ";
         //Make the rest of the delete string SNAPFOLDER1/* SNAPFOLDER2/*
@@ -317,6 +408,7 @@ public class BTRFS {
      * @throws java.io.IOException If something happened
      */
     public static void commenceBackupOperation() throws IOException {
+        checkConfiguration();
         //Do Snapshots
         var snapshots = new ArrayList<Snapshot>(SUBVOLUME_LIST.size());
         SUBVOLUME_LIST.stream().parallel().map(subvolume -> subvolume.snapshot()).forEach(snapshot -> {
@@ -358,10 +450,11 @@ public class BTRFS {
 
     /**
      * Configures a subvolume's drive for snapshots and returns the directory of
-     * the snapshots folder. Creates the snapshots directory on the drive.
+     * the snapshots folder.Creates the snapshots directory on the drive.
      *
      * @param subvolume The folder on the hard drive to configure
      * @return The location of the Snapshots folder
+     * @throws java.io.IOException
      */
     public static Path configureSnapshotFilesystem(Subvolume subvolume) throws IOException {
         //We want to get the parent because this command has a strange output ON the subvolume itself
@@ -422,6 +515,8 @@ public class BTRFS {
      * @return the list of subvolumes saved that we are to snapshot
      */
     public static List<Subvolume> getSubvolumeList() {
+        //Ensure we're initialized
+        checkConfiguration();
         return new ArrayList<>(SUBVOLUME_LIST);
     }
 
