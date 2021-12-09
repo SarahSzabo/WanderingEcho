@@ -65,7 +65,7 @@
         <maven.compiler.source>12</maven.compiler.source>
         <maven.compiler.target>12</maven.compiler.target>
         <!-- Use the latest version whenever possible. -->
-        <jackson.version>2.9.9</jackson.version>
+        <jackson.version>2.9.10.8</jackson.version>
     </properties>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/commons-io/commons-io -->
